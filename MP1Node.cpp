@@ -132,7 +132,7 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
     }
     else {
         size_t msgsize = sizeof(MessageHdr) + sizeof(joinaddr->addr) + sizeof(long) + 1;
-        msg = (MessageHdr *) malloc(msgsize * sizeof(char));
+        msg = (MessageHdr*) malloc(msgsize * sizeof(char));
 
         // create JOINREQ message: format of data is {struct Address myaddr}
         msg->msgType = JOINREQ;
@@ -143,7 +143,6 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
         sprintf(s, "Trying to join...");
         log->LOG(&memberNode->addr, s);
 #endif
-
         // send JOINREQ message to introducer member
         emulNet->ENsend(&memberNode->addr, joinaddr, (char *)msg, msgsize);
 
@@ -159,7 +158,7 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
  *
  * DESCRIPTION: Wind up this node and clean up state
  */
-int MP1Node::finishUpThisNode(){
+int MP1Node::finishUpThisNode() {
    /*
     * Your code goes here
     */
@@ -215,9 +214,23 @@ void MP1Node::checkMessages() {
  * DESCRIPTION: Message handler for different message types
  */
 bool MP1Node::recvCallBack(void *env, char *data, int size ) {
-	/*
-	 * Your code goes here
-	 */
+	MessageHdr *msg = (MessageHdr*) data;
+    if (msg->msgType == JOINREQ) {
+        char *addr = (char*) malloc(sizeof(memberNode->addr.addr));
+        memcpy(addr, (char*)(msg+1), sizeof(memberNode->addr.addr));
+        int id;
+        short port;
+        memcpy(&id, &addr[0], sizeof(int));
+		memcpy(&port, &addr[4], sizeof(short));
+
+        long heartbeat;
+        memcpy(&heartbeat, (char *)(msg+1) + 1 + sizeof(memberNode->addr.addr), sizeof(long));
+        
+        MemberListEntry(id, port, heartbeat, par->getcurrtime());
+    } 
+    else if(msg->msgType == JOINREP || msg->msgType == GOSSIP) {
+        // char* messageInfo = (char*) malloc(sizeof())
+    }
 }
 
 /**
@@ -242,10 +255,8 @@ bool MP1Node::isMemberFailed(int index) {
  * 				Propagate your membership list
  */
 void MP1Node::nodeLoopOps() {
-
-	/*
-	 * Your code goes here
-	 */
+    this->memberNode->heartbeat++;
+	
     for (int i = 0; i < failedMembers.size(); i++) {
         int failedMemberIndex = failedMembers[i];
         if ((par->getcurrtime() - memberNode->memberList[failedMemberIndex].gettimestamp()) > (TFAIL + TREMOVE)) {
@@ -254,14 +265,17 @@ void MP1Node::nodeLoopOps() {
             i--;
         }
     }
+
     vector<MemberListEntry>::iterator position;
     for(position = memberNode->memberList.begin(); position < memberNode->memberList.end(); position++) {
         int index = distance(memberNode->memberList.begin(), position);
-        if ( (par->getcurrtime() - position->gettimestamp()) > TFAIL && !isMemberFailed(index)) {
+        if ( (par->getcurrtime() - position->gettimestamp()) > TFAIL && !isMemberFailed(index) ) {
             // Mark them as failed
             failedMembers.push_back(index);
         }
     }
+
+    sendMembershipList();
 
     return;
 }

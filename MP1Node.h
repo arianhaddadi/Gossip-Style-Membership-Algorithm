@@ -31,7 +31,7 @@
 enum MsgTypes{
     JOINREQ,
     JOINREP,
-    DUMMYLASTMSGTYPE
+    GOSSIP
 };
 
 /**
@@ -71,6 +71,7 @@ public:
 	void nodeLoop();
 	void checkMessages();
 	bool isMemberFailed(int index);
+	void sendMembershipList();
 	bool recvCallBack(void *env, char *data, int size);
 	void nodeLoopOps();
 	int isNullAddress(Address *addr);
