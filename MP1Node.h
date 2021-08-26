@@ -14,6 +14,7 @@
 #include "Member.h"
 #include "EmulNet.h"
 #include "Queue.h"
+#include "sstream"
 
 /**
  * Macros
@@ -59,7 +60,7 @@ private:
 
 public:
 	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
-	Member * getMemberNode() {
+	Member* getMemberNode() {
 		return memberNode;
 	}
 	int recvLoop();
@@ -70,8 +71,11 @@ public:
 	int finishUpThisNode();
 	void nodeLoop();
 	void checkMessages();
+	string getMembershipListString();
+	vector<string> splitString(string str, char delim);
 	bool isMemberFailed(int index);
-	void sendMembershipList();
+	MemberListEntry* getMemberListEntery(int id, int port);
+	void sendMembershipList(char* destination);
 	bool recvCallBack(void *env, char *data, int size);
 	void nodeLoopOps();
 	int isNullAddress(Address *addr);

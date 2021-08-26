@@ -189,6 +189,33 @@ void MP1Node::nodeLoop() {
     return;
 }
 
+vector<string> MP1Node::splitString(string str, char delim) {
+    vector<string> pieces;
+    string piece;
+    stringstream sd(str);
+
+    while(getline(sd, piece, delim)) {
+        pieces.push_back(piece);
+    }
+
+    return pieces;
+}
+
+/**
+ * FUNCTION NAME: getMemberListEntery
+ *
+ * DESCRIPTION: Returns a pointer to the MemberlistEntry with corresponding id and port
+ */
+MemberListEntry* MP1Node::getMemberListEntery(int id, int port) {
+    vector<MemberListEntry>::iterator position;
+    for(position = memberNode->memberList.begin(); position < memberNode->memberList.end(); position++) {
+        if (position->id == id && position->port == port) {
+            return &(*position);
+        }
+    }
+    return NULL;
+}
+
 /**
  * FUNCTION NAME: checkMessages
  *
@@ -215,6 +242,8 @@ void MP1Node::checkMessages() {
  */
 bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 	MessageHdr *msg = (MessageHdr*) data;
+    
+
     if (msg->msgType == JOINREQ) {
         char *addr = (char*) malloc(sizeof(memberNode->addr.addr));
         memcpy(addr, (char*)(msg+1), sizeof(memberNode->addr.addr));
@@ -224,12 +253,34 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 		memcpy(&port, &addr[4], sizeof(short));
 
         long heartbeat;
-        memcpy(&heartbeat, (char *)(msg+1) + 1 + sizeof(memberNode->addr.addr), sizeof(long));
+        memcpy(&heartbeat, (char*)(msg+1) + 1 + sizeof(memberNode->addr.addr), sizeof(long));
         
-        MemberListEntry(id, port, heartbeat, par->getcurrtime());
+        memberNode->memberList.push_back(MemberListEntry(id, port, heartbeat, par->getcurrtime()));
+        sendMembershipList(addr);
     } 
     else if(msg->msgType == JOINREP || msg->msgType == GOSSIP) {
-        // char* messageInfo = (char*) malloc(sizeof())
+        size_t contentSize = sizeof(msg) - sizeof(MessageHdr);
+        char *content = (char*) malloc(contentSize * sizeof(char));
+        memcpy(content, (char*)(msg+1), contentSize * sizeof(char));
+
+        string contentString = content;
+        vector<string> pieces = splitString(contentString, ',');
+
+        for(int i = 0; i < pieces.size(); i++) {
+            vector<string> pieceInfo = splitString(pieces[i], ':');
+            int id = stoi(pieceInfo[0]);
+            int port = stoi(pieceInfo[1]);
+            int heartbeat = stoi(pieceInfo[2]);
+
+            MemberListEntry* memberListEntry = getMemberListEntery(id, port);
+            if (memberListEntry == NULL) {
+                memberNode->memberList.push_back(MemberListEntry(id, port, heartbeat, par->getcurrtime()));
+            }
+            else if (memberListEntry->getheartbeat() < heartbeat) {
+                memberListEntry->setheartbeat(heartbeat);
+                memberListEntry->timestamp = par->getcurrtime();
+            }
+        }
     }
 }
 
@@ -245,6 +296,56 @@ bool MP1Node::isMemberFailed(int index) {
         }
     }
     return false;
+}
+
+/**
+ * FUNCTION NAME: getMembershipListString
+ *
+ * DESCRIPTION: Produces the string of the entire membership list
+ */
+string MP1Node::getMembershipListString() {
+    string membershipString = "";
+
+    vector<MemberListEntry>::iterator position;
+    for(position = memberNode->memberList.begin(); position < memberNode->memberList.end(); position++) {
+        string memberString = "";
+        memberString += to_string(position->getid()) + ":";
+        memberString += to_string(position->getport()) + ":";
+        memberString += to_string(position->getheartbeat());
+
+        membershipString += memberString += ((position == memberNode->memberList.end() - 1) ? "," : "");
+    }
+    return membershipString;
+}
+
+/**
+ * FUNCTION NAME: sendMembershipList
+ *
+ * DESCRIPTION: Sends the entire membership list to other nodes
+ */
+void MP1Node::sendMembershipList(char* destination) {
+    string membershipList = getMembershipListString();
+    if (destination == NULL) {
+        vector<MemberListEntry>::iterator position;
+        for(position = memberNode->memberList.begin(); position < memberNode->memberList.end(); position++) {
+            
+            string address = to_string(position->getid());
+            address += to_string(position->getport());
+
+            size_t messageSize = sizeof(MessageHdr) + sizeof(address.c_str());
+            MessageHdr* msg = (MessageHdr*) malloc(messageSize * sizeof(char));
+            msg->msgType = GOSSIP;
+        
+            emulNet->ENsend(&(memberNode->addr), new Address(address), (char*)membershipList.c_str(), sizeof(membershipList.c_str()));
+        }
+    }
+    else {
+            size_t messageSize = sizeof(MessageHdr) + sizeof(destination);
+            MessageHdr* msg = (MessageHdr*) malloc(messageSize * sizeof(char));
+            msg->msgType = JOINREP;
+
+            emulNet->ENsend(&(memberNode->addr), new Address(destination), (char*)membershipList.c_str(), sizeof(membershipList.c_str()));
+    }
 }
 
 /**
@@ -275,7 +376,7 @@ void MP1Node::nodeLoopOps() {
         }
     }
 
-    sendMembershipList();
+    sendMembershipList(NULL);
 
     return;
 }
