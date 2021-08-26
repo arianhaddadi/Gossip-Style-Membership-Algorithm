@@ -221,6 +221,20 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 }
 
 /**
+ * FUNCTION NAME: isMemberFailed
+ *
+ * DESCRIPTION: Check if the member list with given index in membership list is failed
+ */
+bool MP1Node::isMemberFailed(int index) {
+    for(int i = 0; i < failedMembers.size(); i++) {
+        if(index == failedMembers[i]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * FUNCTION NAME: nodeLoopOps
  *
  * DESCRIPTION: Check if any node hasn't responded within a timeout period and then delete
@@ -232,6 +246,22 @@ void MP1Node::nodeLoopOps() {
 	/*
 	 * Your code goes here
 	 */
+    for (int i = 0; i < failedMembers.size(); i++) {
+        int failedMemberIndex = failedMembers[i];
+        if ((par->getcurrtime() - memberNode->memberList[failedMemberIndex].gettimestamp()) > (TFAIL + TREMOVE)) {
+            memberNode->memberList.erase(memberNode->memberList.begin() + failedMemberIndex);
+            failedMembers.erase(failedMembers.begin() + i);
+            i--;
+        }
+    }
+    vector<MemberListEntry>::iterator position;
+    for(position = memberNode->memberList.begin(); position < memberNode->memberList.end(); position++) {
+        int index = distance(memberNode->memberList.begin(), position);
+        if ( (par->getcurrtime() - position->gettimestamp()) > TFAIL && !isMemberFailed(index)) {
+            // Mark them as failed
+            failedMembers.push_back(index);
+        }
+    }
 
     return;
 }

@@ -54,6 +54,7 @@ private:
 	Log *log;
 	Params *par;
 	Member *memberNode;
+	vector<int> failedMembers;
 	char NULLADDR[6];
 
 public:
@@ -69,6 +70,7 @@ public:
 	int finishUpThisNode();
 	void nodeLoop();
 	void checkMessages();
+	bool isMemberFailed(int index);
 	bool recvCallBack(void *env, char *data, int size);
 	void nodeLoopOps();
 	int isNullAddress(Address *addr);
