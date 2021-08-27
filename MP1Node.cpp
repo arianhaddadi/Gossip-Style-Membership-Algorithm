@@ -96,8 +96,6 @@ int MP1Node::initThisNode(Address *joinaddr) {
 	/*
 	 * This function is partially implemented and may require changes
 	 */
-	int id = *(int*)(&memberNode->addr.addr);
-	int port = *(short*)(&memberNode->addr.addr[4]);
 
 	memberNode->bFailed = false;
 	memberNode->inited = true;
@@ -118,7 +116,7 @@ int MP1Node::initThisNode(Address *joinaddr) {
  * DESCRIPTION: Join the distributed system
  */
 int MP1Node::introduceSelfToGroup(Address *joinaddr) {
-	MessageHdr *msg;
+	char *msg;
 #ifdef DEBUGLOG
     static char s[1024];
 #endif
@@ -131,20 +129,23 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
         memberNode->inGroup = true;
     }
     else {
-        size_t msgsize = sizeof(MessageHdr) + sizeof(joinaddr->addr) + sizeof(long) + 1;
-        msg = (MessageHdr*) malloc(msgsize * sizeof(char));
+        size_t msgsize = sizeof(JOINREQ) + sizeof(joinaddr->addr) + sizeof(long) + 1;
+        msg = (char*) malloc(msgsize * sizeof(char));
+        if (msg == nullptr) {
+            cerr << 1000 << endl;
+        }
 
-        // create JOINREQ message: format of data is {struct Address myaddr}
-        msg->msgType = JOINREQ;
-        memcpy((char *)(msg+1), &memberNode->addr.addr, sizeof(memberNode->addr.addr));
-        memcpy((char *)(msg+1) + 1 + sizeof(memberNode->addr.addr), &memberNode->heartbeat, sizeof(long));
+        // create JOINREQ message: format of data is {messageType address heartbeat}
+        msg[0] = JOINREQ;
+        memcpy((msg+1), &memberNode->addr.addr, sizeof(memberNode->addr.addr));
+        memcpy((msg+1) + 1 + sizeof(memberNode->addr.addr), &memberNode->heartbeat, sizeof(long));
 
 #ifdef DEBUGLOG
         sprintf(s, "Trying to join...");
         log->LOG(&memberNode->addr, s);
 #endif
         // send JOINREQ message to introducer member
-        emulNet->ENsend(&memberNode->addr, joinaddr, (char *)msg, msgsize);
+        emulNet->ENsend(&memberNode->addr, joinaddr, msg, msgsize);
 
         free(msg);
     }
@@ -158,10 +159,12 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
  *
  * DESCRIPTION: Wind up this node and clean up state
  */
-int MP1Node::finishUpThisNode() {
-   /*
-    * Your code goes here
-    */
+void MP1Node::finishUpThisNode() {
+   delete(emulNet);
+   delete(log);
+   delete(par);
+   delete(memberNode);
+   failedMembers.clear();
 }
 
 /**
@@ -185,8 +188,6 @@ void MP1Node::nodeLoop() {
 
     // ...then jump in and share your responsibilites!
     nodeLoopOps();
-
-    return;
 }
 
 vector<string> MP1Node::splitString(string str, char delim) {
@@ -202,18 +203,18 @@ vector<string> MP1Node::splitString(string str, char delim) {
 }
 
 /**
- * FUNCTION NAME: getMemberListEntery
+ * FUNCTION NAME: getMemberListEntry
  *
- * DESCRIPTION: Returns a pointer to the MemberlistEntry with corresponding id and port
+ * DESCRIPTION: Returns a pointer to the MemberListEntry with corresponding id and port
  */
-MemberListEntry* MP1Node::getMemberListEntery(int id, int port) {
+MemberListEntry* MP1Node::getMemberListEntry(int id, int port) {
     vector<MemberListEntry>::iterator position;
     for(position = memberNode->memberList.begin(); position < memberNode->memberList.end(); position++) {
         if (position->id == id && position->port == port) {
             return &(*position);
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 /**
@@ -232,7 +233,17 @@ void MP1Node::checkMessages() {
     	memberNode->mp1q.pop();
     	recvCallBack((void *)memberNode, (char *)ptr, size);
     }
-    return;
+}
+
+/**
+ * FUNCTION NAME: clear
+ *
+ * DESCRIPTION: Assigns all elements of an array to NULL
+ */
+void MP1Node::clear(char* arr, size_t len) {
+    for (int i = 0; i < len; i++) {
+        arr[i] = '\0';
+    }
 }
 
 /**
@@ -240,46 +251,60 @@ void MP1Node::checkMessages() {
  *
  * DESCRIPTION: Message handler for different message types
  */
-bool MP1Node::recvCallBack(void *env, char *data, int size ) {
-	MessageHdr *msg = (MessageHdr*) data;
-    
-
-    if (msg->msgType == JOINREQ) {
-        char *addr = (char*) malloc(sizeof(memberNode->addr.addr));
-        memcpy(addr, (char*)(msg+1), sizeof(memberNode->addr.addr));
+void MP1Node::recvCallBack(void *env, char *msg, int size) {
+    if (msg[0] == JOINREQ) {
+        char *addr = (char*) malloc(sizeof(memberNode->addr.addr) + 1);
+//        if (addr == NULL) {
+//            cerr << 2000 << endl;
+//        }
+//        clear(addr, sizeof(memberNode->addr.addr) + 1);
+        memcpy(addr, msg + 1, sizeof(memberNode->addr.addr));
         int id;
         short port;
         memcpy(&id, &addr[0], sizeof(int));
 		memcpy(&port, &addr[4], sizeof(short));
 
         long heartbeat;
-        memcpy(&heartbeat, (char*)(msg+1) + 1 + sizeof(memberNode->addr.addr), sizeof(long));
+        memcpy(&heartbeat, msg + 1 + sizeof(memberNode->addr.addr) + 1, sizeof(long));
         
         memberNode->memberList.push_back(MemberListEntry(id, port, heartbeat, par->getcurrtime()));
-        sendMembershipList(addr);
+        sendMembershipList(to_string(id) + ":" + to_string(port));
+//        free(addr);
     } 
-    else if(msg->msgType == JOINREP || msg->msgType == GOSSIP) {
-        size_t contentSize = sizeof(msg) - sizeof(MessageHdr);
-        char *content = (char*) malloc(contentSize * sizeof(char));
-        memcpy(content, (char*)(msg+1), contentSize * sizeof(char));
+    else if(msg[0] == JOINREP || msg[0] == GOSSIP) {
+        size_t contentSize = strlen(msg) - 1;
+        char *content = (char*)malloc(contentSize * sizeof(char) + 1);
+//        if (content == NULL) {
+//            cerr << 1000 << endl;
+//        }
+//         clear(content, contentSize * sizeof(char) + 2);
+        memcpy(content, msg + 1, contentSize * sizeof(char));
 
         string contentString = content;
         vector<string> pieces = splitString(contentString, ',');
 
         for(int i = 0; i < pieces.size(); i++) {
             vector<string> pieceInfo = splitString(pieces[i], ':');
-            int id = stoi(pieceInfo[0]);
-            int port = stoi(pieceInfo[1]);
-            int heartbeat = stoi(pieceInfo[2]);
+            cerr << "hhh:"  << endl;
 
-            MemberListEntry* memberListEntry = getMemberListEntery(id, port);
-            if (memberListEntry == NULL) {
+            int id = stoi(pieceInfo[0]);
+            cerr << "here" << endl;
+            short port = stoi(pieceInfo[1]);
+            cerr << "dee" << endl;
+            int heartbeat = stoi(pieceInfo[2]);
+            cerr << "heefefre" << endl;
+            // int id, port, heartbeat;
+
+
+            MemberListEntry* memberListEntry = getMemberListEntry(id, port);
+            if (memberListEntry == nullptr) {
                 memberNode->memberList.push_back(MemberListEntry(id, port, heartbeat, par->getcurrtime()));
             }
             else if (memberListEntry->getheartbeat() < heartbeat) {
                 memberListEntry->setheartbeat(heartbeat);
                 memberListEntry->timestamp = par->getcurrtime();
             }
+//            free(content);
         }
     }
 }
@@ -306,6 +331,13 @@ bool MP1Node::isMemberFailed(int index) {
 string MP1Node::getMembershipListString() {
     string membershipString = "";
 
+    int id;
+    short port;
+    memcpy(&id, &memberNode->addr.addr[0], sizeof(int));
+    memcpy(&port, &memberNode->addr.addr[4], sizeof(short));
+    membershipString += to_string(id) + ":" + to_string(port) + ":" + to_string(memberNode->heartbeat);
+    if (memberNode->memberList.size() > 0) membershipString += ",";
+
     vector<MemberListEntry>::iterator position;
     for(position = memberNode->memberList.begin(); position < memberNode->memberList.end(); position++) {
         string memberString = "";
@@ -313,7 +345,7 @@ string MP1Node::getMembershipListString() {
         memberString += to_string(position->getport()) + ":";
         memberString += to_string(position->getheartbeat());
 
-        membershipString += memberString += ((position == memberNode->memberList.end() - 1) ? "," : "");
+        membershipString += memberString += ((position != memberNode->memberList.end() - 1) ? "," : "");
     }
     return membershipString;
 }
@@ -323,28 +355,38 @@ string MP1Node::getMembershipListString() {
  *
  * DESCRIPTION: Sends the entire membership list to other nodes
  */
-void MP1Node::sendMembershipList(char* destination) {
+void MP1Node::sendMembershipList(string destination) {
     string membershipList = getMembershipListString();
-    if (destination == NULL) {
+//    cerr << "wewqq---" << membershipList << endl;
+//    size_t messageSize = 1 + membershipList.size();
+    string msg = "0" + membershipList;
+//    clear((char*)msg, (messageSize) * sizeof(char));
+//    memcpy(msg + 1 + 1, membershipList.c_str(), messageSize - 1);
+
+    if (destination.empty()) {
         vector<MemberListEntry>::iterator position;
         for(position = memberNode->memberList.begin(); position < memberNode->memberList.end(); position++) {
-            
             string address = to_string(position->getid());
+            address += ":";
             address += to_string(position->getport());
 
-            size_t messageSize = sizeof(MessageHdr) + sizeof(address.c_str());
-            MessageHdr* msg = (MessageHdr*) malloc(messageSize * sizeof(char));
-            msg->msgType = GOSSIP;
+            // size_t messageSize = sizeof(MessageHdr) + sizeof(membershipList.c_str());
+            // MessageHdr* msg = (MessageHdr*) malloc((messageSize + 2) * sizeof(char));
+            // clear((char*)msg, (messageSize + 2) * sizeof(char));
+            msg[0] = GOSSIP;
+            // memcpy((char*)(msg+1) + 1, membershipList.c_str(), sizeof(membershipList.c_str()));
         
-            emulNet->ENsend(&(memberNode->addr), new Address(address), (char*)membershipList.c_str(), sizeof(membershipList.c_str()));
+            emulNet->ENsend(&(memberNode->addr), new Address(address), msg);
         }
     }
     else {
-            size_t messageSize = sizeof(MessageHdr) + sizeof(destination);
-            MessageHdr* msg = (MessageHdr*) malloc(messageSize * sizeof(char));
-            msg->msgType = JOINREP;
+            // size_t messageSize = sizeof(MessageHdr) + sizeof(membershipList.c_str());
+            // MessageHdr* msg = (MessageHdr*) malloc((messageSize + 2) * sizeof(char));
+            msg[0] = JOINREP;
+            // memcpy((char*)(msg+1) + 1, membershipList.c_str(), sizeof(membershipList.c_str()));
+            
 
-            emulNet->ENsend(&(memberNode->addr), new Address(destination), (char*)membershipList.c_str(), sizeof(membershipList.c_str()));
+            emulNet->ENsend(&(memberNode->addr), new Address(destination), msg);
     }
 }
 
@@ -376,9 +418,7 @@ void MP1Node::nodeLoopOps() {
         }
     }
 
-    sendMembershipList(NULL);
-
-    return;
+    sendMembershipList("");
 }
 
 /**

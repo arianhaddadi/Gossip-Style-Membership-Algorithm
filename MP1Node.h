@@ -17,32 +17,17 @@
 #include "sstream"
 
 /**
- * Macros
+ * Time Period Macros
  */
 #define TREMOVE 20
 #define TFAIL 5
 
-/*
- * Note: You can change/add any functions in MP1Node.{h,cpp}
- */
-
 /**
- * Message Types
+ * Message Type Macros
  */
-enum MsgTypes{
-    JOINREQ,
-    JOINREP,
-    GOSSIP
-};
-
-/**
- * STRUCT NAME: MessageHdr
- *
- * DESCRIPTION: Header and content of a message
- */
-typedef struct MessageHdr {
-	enum MsgTypes msgType;
-}MessageHdr;
+#define JOINREQ '0'
+#define JOINREP '1'
+#define GOSSIP '2'
 
 /**
  * CLASS NAME: MP1Node
@@ -64,19 +49,20 @@ public:
 		return memberNode;
 	}
 	int recvLoop();
+	void clear(char*, size_t);
 	static int enqueueWrapper(void *env, char *buff, int size);
 	void nodeStart(char *servaddrstr, short serverport);
 	int initThisNode(Address *joinaddr);
 	int introduceSelfToGroup(Address *joinAddress);
-	int finishUpThisNode();
+	void finishUpThisNode();
 	void nodeLoop();
 	void checkMessages();
 	string getMembershipListString();
 	vector<string> splitString(string str, char delim);
 	bool isMemberFailed(int index);
-	MemberListEntry* getMemberListEntery(int id, int port);
-	void sendMembershipList(char* destination);
-	bool recvCallBack(void *env, char *data, int size);
+	MemberListEntry* getMemberListEntry(int id, int port);
+	void sendMembershipList(string destination);
+	void recvCallBack(void *env, char *data, int size);
 	void nodeLoopOps();
 	int isNullAddress(Address *addr);
 	Address getJoinAddress();
