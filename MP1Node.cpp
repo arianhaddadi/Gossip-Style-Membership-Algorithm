@@ -7,14 +7,8 @@
 
 #include "MP1Node.h"
 
-/*
- * Note: You can change/add any functions in MP1Node.{h,cpp}
- */
-
 /**
  * Overloaded Constructor of the MP1Node class
- * You can add new members to the class if you think it
- * is necessary for your logic to work
  */
 MP1Node::MP1Node(Member *member, Params *params, EmulNet *emul, Log *log, Address *address) {
 	for( int i = 0; i < 6; i++ ) {
@@ -69,7 +63,6 @@ void MP1Node::nodeStart(char *servaddrstr, short servport) {
     Address joinaddr;
     joinaddr = getJoinAddress();
 
-    // Self booting routines
     if( initThisNode(&joinaddr) == -1 ) {
 #ifdef DEBUGLOG
         log->LOG(&memberNode->addr, "init_thisnode failed. Exit.");
@@ -92,14 +85,9 @@ void MP1Node::nodeStart(char *servaddrstr, short servport) {
  * DESCRIPTION: Find out who I am and start up
  */
 int MP1Node::initThisNode(Address *joinaddr) {
-	/*
-	 * This function is partially implemented and may require changes
-	 */
-
 	memberNode->bFailed = false;
 	memberNode->inited = true;
 	memberNode->inGroup = false;
-    // node is up!
 	memberNode->nnb = 0;
 	memberNode->heartbeat = 0;
 	memberNode->pingCounter = TFAIL;
@@ -121,7 +109,6 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
 #endif
 
     if ( 0 == memcmp((char *)&(memberNode->addr.addr), (char *)&(joinaddr->addr), sizeof(memberNode->addr.addr))) {
-        // I am the group booter (first process to join the group). Boot up the group
 #ifdef DEBUGLOG
         log->LOG(&memberNode->addr, "Starting up group...");
 #endif
@@ -130,11 +117,7 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
     else {
         size_t msgsize = sizeof(JOINREQ) + sizeof(joinaddr->addr) + sizeof(long) + 1;
         msg = (char*) malloc(msgsize * sizeof(char));
-//        if (msg == nullptr) {
-//            cerr << 1000 << endl;
-//        }
 
-        // create JOINREQ message: format of data is {messageType address heartbeat}
         msg[0] = JOINREQ;
         memcpy((msg+1), &memberNode->addr.addr, sizeof(memberNode->addr.addr));
         memcpy((msg+1) + 1 + sizeof(memberNode->addr.addr), &memberNode->heartbeat, sizeof(long));
@@ -159,34 +142,23 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
  * DESCRIPTION: Wind up this node and clean up state
  */
 void MP1Node::finishUpThisNode() {
-//   delete(emulNet);
-//   delete(log);
-//   delete(par);
-//   delete(memberNode);
    failedMembers.clear();
 }
 
 /**
  * FUNCTION NAME: nodeLoop
  *
- * DESCRIPTION: Executed periodically at each member
- * 				Check your messages in queue and perform membership protocol duties
+ * DESCRIPTION: Checks for messages in queue and performs membership protocol duties
  */
 void MP1Node::nodeLoop() {
     if (memberNode->bFailed) {
-
     	return;
     }
 
-    // Check my messages
     checkMessages();
-
-    // Wait until you're in the group...
     if( !memberNode->inGroup ) {
     	return;
     }
-
-    // ...then jump in and share your responsibilites!
     nodeLoopOps();
 }
 
@@ -238,7 +210,7 @@ void MP1Node::checkMessages() {
 /**
  * FUNCTION NAME: clear
  *
- * DESCRIPTION: Assigns all elements of an array to NULL
+ * DESCRIPTION: Assigns all elements of an array of characters to NULL
  */
 void MP1Node::clear(char* arr, size_t len) {
     for (int i = 0; i < len; i++) {
@@ -254,9 +226,6 @@ void MP1Node::clear(char* arr, size_t len) {
 void MP1Node::recvCallBack(void *env, char *msg, int size) {
     if (msg[0] == JOINREQ) {
         char *addr = (char*) malloc(sizeof(memberNode->addr.addr) + 1);
-//        if (addr == NULL) {
-//            cerr << 2000 << endl;
-//        }
         clear(addr, sizeof(memberNode->addr.addr) + 1);
         memcpy(addr, msg + 1, sizeof(memberNode->addr.addr));
         int id;
@@ -270,21 +239,14 @@ void MP1Node::recvCallBack(void *env, char *msg, int size) {
         memberNode->memberList.push_back(MemberListEntry(id, port, heartbeat, par->getcurrtime()));
         log->logNodeAdd(new Address(memberNode->addr.getAddress()), new Address(to_string(id) + ":" + to_string(port)));
         sendMembershipList(to_string(id) + ":" + to_string(port));
-//        free(addr);
-    } 
+    }
     else if(msg[0] == JOINREP || msg[0] == GOSSIP) {
         if (msg[0] == JOINREP) {
             memberNode->inGroup = true;
         }
-        size_t contentSize = strlen(msg) - 1;
-//        if (strlen(msg) <= 1) {
-//            cerr << "kiri" << endl;
-//        }
+        size_t contentSize = size - 1;
         char *content = (char*)malloc(contentSize * sizeof(char) + 1);
-//        if (content == NULL) {
-//            cerr << 1000 << endl;
-//        }
-         clear(content, contentSize * sizeof(char) + 1);
+        clear(content, contentSize * sizeof(char) + 1);
         memcpy(content, msg + 1, contentSize * sizeof(char));
 
         string contentString = content;
@@ -295,25 +257,9 @@ void MP1Node::recvCallBack(void *env, char *msg, int size) {
 
         for(int i = 0; i < pieces.size(); i++) {
             vector<string> pieceInfo = splitString(pieces[i], ':');
-//            cerr << "hhh:"  << endl;
-
-//            if (contentString[contentString.size()-1] == '!') {
-//                contentString[contentString.size()-1] = '\0';
-//            }
-//            try {
-//                assert(pieceInfo.size() == 3);
-//            }catch (...) {
-//                cerr << "size:" << pieceInfo.size() << endl;
-//                int a;
-//            }
             int id = stoi(pieceInfo[0]);
-//            cerr << "here" << endl;
             short port = stoi(pieceInfo[1]);
-//            cerr << "dee" << endl;
             int heartbeat = stoi(pieceInfo[2]);
-//            cerr << "heefefre" << endl;
-            // int id, port, heartbeat;
-
 
             MemberListEntry* memberListEntry = getMemberListEntry(id, port);
             if (memberListEntry == nullptr) {
@@ -327,14 +273,11 @@ void MP1Node::recvCallBack(void *env, char *msg, int size) {
             else if (memberListEntry->getheartbeat() < heartbeat) {
                 memberListEntry->setheartbeat(heartbeat);
                 memberListEntry->settimestamp(par->getcurrtime());
-//                cerr << 1312 << endl;
 
                 if (findFailedMember(memberListEntry) >= 0) {
-//                    cerr << 1313 << endl;
                     failedMembers.erase(failedMembers.begin() + findFailedMember(memberListEntry));
                 }
             }
-//            free(content);
         }
     }
 }
@@ -386,9 +329,7 @@ string MP1Node::getMembershipListString() {
 
         membershipString += memberString += ((position != memberNode->memberList.end() - 1) ? "," : "");
     }
-//    if (membershipString.find('!') != string::npos) {
-//        cerr << "found" << endl;
-//    }
+
     return membershipString;
 }
 
@@ -399,7 +340,6 @@ string MP1Node::getMembershipListString() {
  */
 void MP1Node::sendMembershipList(string destination) {
     string membershipList = getMembershipListString();
-//    cerr << "wewqq---" << membershipList << endl;
     string msg = "2" + membershipList;
 
     if (destination.empty()) {
@@ -411,7 +351,6 @@ void MP1Node::sendMembershipList(string destination) {
             address += to_string(position->getport());
 
             msg[0] = GOSSIP;
-//            cerr << 13 << endl;
             emulNet->ENsend(&(memberNode->addr), new Address(address), msg);
         }
     }
@@ -424,36 +363,30 @@ void MP1Node::sendMembershipList(string destination) {
 /**
  * FUNCTION NAME: nodeLoopOps
  *
- * DESCRIPTION: Check if any node hasn't responded within a timeout period and then delete
- * 				the nodes
- * 				Propagate your membership list
+ * DESCRIPTION: Checks if any node hasn't responded within a timeout period and if so deletes it
+ * 				and Propagates its membership list
  */
 void MP1Node::nodeLoopOps() {
     this->memberNode->heartbeat++;
-	
+
+    // Check for failed nodes that are not revived within TREMOVE
     for (int i = 0; i < failedMembers.size(); i++) {
-//        int failedMemberIndex = failedMembers[i];
-        if ((par->getcurrtime() - failedMembers[i]->gettimestamp()) >= (TFAIL + TREMOVE)) {
-            memberNode->memberList.erase(memberNode->memberList.begin() + findMemberListEntryIndex(failedMembers[i]));
+        if ((par->getcurrtime() - failedMembers[i]->gettimestamp()) > (TFAIL + TREMOVE)) {
             log->logNodeRemove(new Address(memberNode->addr.getAddress()), new Address(to_string(failedMembers[i]->getid()) + ":" + to_string(failedMembers[i]->getport())));
+            memberNode->memberList.erase(memberNode->memberList.begin() + findMemberListEntryIndex(failedMembers[i]));
+            for(int j = i + 1; j < failedMembers.size(); j++) {
+                failedMembers[j]--;
+            }
             failedMembers.erase(failedMembers.begin() + i);
-//            cerr << 11 << endl;
             i--;
         }
     }
 
+    // check for nodes that have not been updated within last TFAIL time units
     vector<MemberListEntry>::iterator position;
     for(position = memberNode->memberList.begin(); position < memberNode->memberList.end(); position++) {
-        if ( (par->getcurrtime() - position->gettimestamp()) >= TFAIL && findFailedMember(&(*position)) < 0 ) {
-//            if (num_failures < 20) {
-//            log->logNodeRemove(new Address(memberNode->addr.getAddress()), new Address(to_string(position->getid()) + ":" + to_string(position->getport())));
-
-//                log->logNodeRemove(new Address(memberNode->addr.getAddress()), new Address(to_string(position->getid()) + ":" + to_string(position->getport())));
-//                num_failures++;
-//            }
-//            memberNode->memberList.erase(memberNode->memberList.begin() + findMemberListEntryIndex(&(*position)));
+        if ( (par->getcurrtime() - position->gettimestamp()) > TFAIL && findFailedMember(&(*position)) < 0 ) {
             failedMembers.push_back(&(*position));
-//            cerr << findFailedMember(&(*position)) << endl;
         }
     }
 
