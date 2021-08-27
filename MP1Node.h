@@ -15,6 +15,7 @@
 #include "EmulNet.h"
 #include "Queue.h"
 #include "sstream"
+#include "algorithm"
 
 /**
  * Time Period Macros
@@ -59,6 +60,7 @@ public:
 	void nodeLoop();
 	void checkMessages();
 	string getMembershipListString();
+	vector<int> chooseNeighboursToGossip();
 	vector<string> splitString(string str, char delim);
 	int findFailedMember(MemberListEntry *member);
 	MemberListEntry* getMemberListEntry(int id, int port);

@@ -343,12 +343,13 @@ void MP1Node::sendMembershipList(string destination) {
     string msg = "2" + membershipList;
 
     if (destination.empty()) {
-        vector<MemberListEntry>::iterator position;
-        for(position = memberNode->memberList.begin(); position < memberNode->memberList.end(); position++) {
-            if (findFailedMember(&(*position)) >= 0) continue;
-            string address = to_string(position->getid());
+        vector<int> gossipNeighbours = chooseNeighboursToGossip();
+        for (int i = 0; i < gossipNeighbours.size(); i++) {
+            MemberListEntry* mem = &(memberNode->memberList[gossipNeighbours[i]]);
+            if (findFailedMember(mem) >= 0) continue;
+            string address = to_string(mem->getid());
             address += ":";
-            address += to_string(position->getport());
+            address += to_string(mem->getport());
 
             msg[0] = GOSSIP;
             emulNet->ENsend(&(memberNode->addr), new Address(address), msg);
@@ -358,6 +359,25 @@ void MP1Node::sendMembershipList(string destination) {
             msg[0] = JOINREP;
             emulNet->ENsend(&(memberNode->addr), new Address(destination), msg);
     }
+}
+
+/**
+ * FUNCTION NAME: chooseNeighboursToGossip
+ *
+ * DESCRIPTION: Chooses a number of neighbours as gossiping targets randomly
+ */
+vector<int> MP1Node::chooseNeighboursToGossip() {
+    vector<int> chosenNeighbours;
+    int numToChoose = int(1 * memberNode->memberList.size());
+
+    while (chosenNeighbours.size() < numToChoose) {
+        int random = rand() % memberNode->memberList.size();
+        if (find(chosenNeighbours.begin(), chosenNeighbours.end(), random) == chosenNeighbours.end()) {
+            chosenNeighbours.push_back(random);
+        }
+    }
+
+    return chosenNeighbours;
 }
 
 /**
