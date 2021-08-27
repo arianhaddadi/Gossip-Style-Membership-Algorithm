@@ -24,6 +24,7 @@ MP1Node::MP1Node(Member *member, Params *params, EmulNet *emul, Log *log, Addres
 	this->emulNet = emul;
 	this->log = log;
 	this->par = params;
+	this->num_failures = 0;
 	this->memberNode->addr = *address;
 }
 
@@ -83,8 +84,6 @@ void MP1Node::nodeStart(char *servaddrstr, short servport) {
 #endif
         exit(1);
     }
-
-    return;
 }
 
 /**
@@ -131,9 +130,9 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
     else {
         size_t msgsize = sizeof(JOINREQ) + sizeof(joinaddr->addr) + sizeof(long) + 1;
         msg = (char*) malloc(msgsize * sizeof(char));
-        if (msg == nullptr) {
-            cerr << 1000 << endl;
-        }
+//        if (msg == nullptr) {
+//            cerr << 1000 << endl;
+//        }
 
         // create JOINREQ message: format of data is {messageType address heartbeat}
         msg[0] = JOINREQ;
@@ -160,10 +159,10 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
  * DESCRIPTION: Wind up this node and clean up state
  */
 void MP1Node::finishUpThisNode() {
-   delete(emulNet);
-   delete(log);
-   delete(par);
-   delete(memberNode);
+//   delete(emulNet);
+//   delete(log);
+//   delete(par);
+//   delete(memberNode);
    failedMembers.clear();
 }
 
@@ -175,6 +174,7 @@ void MP1Node::finishUpThisNode() {
  */
 void MP1Node::nodeLoop() {
     if (memberNode->bFailed) {
+
     	return;
     }
 
@@ -257,52 +257,82 @@ void MP1Node::recvCallBack(void *env, char *msg, int size) {
 //        if (addr == NULL) {
 //            cerr << 2000 << endl;
 //        }
-//        clear(addr, sizeof(memberNode->addr.addr) + 1);
+        clear(addr, sizeof(memberNode->addr.addr) + 1);
         memcpy(addr, msg + 1, sizeof(memberNode->addr.addr));
         int id;
         short port;
-        memcpy(&id, &addr[0], sizeof(int));
-		memcpy(&port, &addr[4], sizeof(short));
+        memcpy(&id, addr, sizeof(int));
+		memcpy(&port, addr + 4, sizeof(short));
 
         long heartbeat;
         memcpy(&heartbeat, msg + 1 + sizeof(memberNode->addr.addr) + 1, sizeof(long));
         
         memberNode->memberList.push_back(MemberListEntry(id, port, heartbeat, par->getcurrtime()));
+        log->logNodeAdd(new Address(memberNode->addr.getAddress()), new Address(to_string(id) + ":" + to_string(port)));
         sendMembershipList(to_string(id) + ":" + to_string(port));
 //        free(addr);
     } 
     else if(msg[0] == JOINREP || msg[0] == GOSSIP) {
+        if (msg[0] == JOINREP) {
+            memberNode->inGroup = true;
+        }
         size_t contentSize = strlen(msg) - 1;
+//        if (strlen(msg) <= 1) {
+//            cerr << "kiri" << endl;
+//        }
         char *content = (char*)malloc(contentSize * sizeof(char) + 1);
 //        if (content == NULL) {
 //            cerr << 1000 << endl;
 //        }
-//         clear(content, contentSize * sizeof(char) + 2);
+         clear(content, contentSize * sizeof(char) + 1);
         memcpy(content, msg + 1, contentSize * sizeof(char));
 
         string contentString = content;
+        if (contentString[contentString.size()-1] == '!') {
+            contentString[contentString.size()-1] = '\0';
+        }
         vector<string> pieces = splitString(contentString, ',');
 
         for(int i = 0; i < pieces.size(); i++) {
             vector<string> pieceInfo = splitString(pieces[i], ':');
-            cerr << "hhh:"  << endl;
+//            cerr << "hhh:"  << endl;
 
+//            if (contentString[contentString.size()-1] == '!') {
+//                contentString[contentString.size()-1] = '\0';
+//            }
+//            try {
+//                assert(pieceInfo.size() == 3);
+//            }catch (...) {
+//                cerr << "size:" << pieceInfo.size() << endl;
+//                int a;
+//            }
             int id = stoi(pieceInfo[0]);
-            cerr << "here" << endl;
+//            cerr << "here" << endl;
             short port = stoi(pieceInfo[1]);
-            cerr << "dee" << endl;
+//            cerr << "dee" << endl;
             int heartbeat = stoi(pieceInfo[2]);
-            cerr << "heefefre" << endl;
+//            cerr << "heefefre" << endl;
             // int id, port, heartbeat;
 
 
             MemberListEntry* memberListEntry = getMemberListEntry(id, port);
             if (memberListEntry == nullptr) {
-                memberNode->memberList.push_back(MemberListEntry(id, port, heartbeat, par->getcurrtime()));
+                vector<string> myaddr = splitString(memberNode->addr.getAddress(), ':');
+                if (stoi(myaddr[0]) != id || stoi(myaddr[1]) != port) {
+                    memberNode->memberList.push_back(MemberListEntry(id, port, heartbeat, par->getcurrtime()));
+                    log->logNodeAdd(new Address(memberNode->addr.getAddress()), new Address(to_string(id) + ":" + to_string(port)));
+                }
+
             }
             else if (memberListEntry->getheartbeat() < heartbeat) {
                 memberListEntry->setheartbeat(heartbeat);
-                memberListEntry->timestamp = par->getcurrtime();
+                memberListEntry->settimestamp(par->getcurrtime());
+//                cerr << 1312 << endl;
+
+                if (findFailedMember(memberListEntry) >= 0) {
+//                    cerr << 1313 << endl;
+                    failedMembers.erase(failedMembers.begin() + findFailedMember(memberListEntry));
+                }
             }
 //            free(content);
         }
@@ -310,17 +340,29 @@ void MP1Node::recvCallBack(void *env, char *msg, int size) {
 }
 
 /**
- * FUNCTION NAME: isMemberFailed
+ * FUNCTION NAME: findMemberListEntryIndex
  *
- * DESCRIPTION: Check if the member list with given index in membership list is failed
+ * DESCRIPTION: Finds the index of a member in membershipList
  */
-bool MP1Node::isMemberFailed(int index) {
+int MP1Node::findMemberListEntryIndex(MemberListEntry *mem) {
+    for(int i = 0; i < memberNode->memberList.size(); i++) {
+        if (&(memberNode->memberList[i]) == mem) return i;
+    }
+    return -1;
+}
+
+/**
+ * FUNCTION NAME: findFailedMember
+ *
+ * DESCRIPTION: finds the failed member among failed members and returns its index
+ */
+int MP1Node::findFailedMember(MemberListEntry* member) {
     for(int i = 0; i < failedMembers.size(); i++) {
-        if(index == failedMembers[i]) {
-            return true;
+        if(member == failedMembers[i]) {
+            return i;
         }
     }
-    return false;
+    return -1;
 }
 
 /**
@@ -329,24 +371,24 @@ bool MP1Node::isMemberFailed(int index) {
  * DESCRIPTION: Produces the string of the entire membership list
  */
 string MP1Node::getMembershipListString() {
-    string membershipString = "";
-
     int id;
     short port;
     memcpy(&id, &memberNode->addr.addr[0], sizeof(int));
     memcpy(&port, &memberNode->addr.addr[4], sizeof(short));
-    membershipString += to_string(id) + ":" + to_string(port) + ":" + to_string(memberNode->heartbeat);
-    if (memberNode->memberList.size() > 0) membershipString += ",";
+    string membershipString = to_string(id) + ":" + to_string(port) + ":" + to_string(memberNode->heartbeat);
+    if (!memberNode->memberList.empty()) membershipString += ",";
 
     vector<MemberListEntry>::iterator position;
     for(position = memberNode->memberList.begin(); position < memberNode->memberList.end(); position++) {
-        string memberString = "";
-        memberString += to_string(position->getid()) + ":";
+        string memberString = to_string(position->getid()) + ":";
         memberString += to_string(position->getport()) + ":";
         memberString += to_string(position->getheartbeat());
 
         membershipString += memberString += ((position != memberNode->memberList.end() - 1) ? "," : "");
     }
+//    if (membershipString.find('!') != string::npos) {
+//        cerr << "found" << endl;
+//    }
     return membershipString;
 }
 
@@ -358,34 +400,23 @@ string MP1Node::getMembershipListString() {
 void MP1Node::sendMembershipList(string destination) {
     string membershipList = getMembershipListString();
 //    cerr << "wewqq---" << membershipList << endl;
-//    size_t messageSize = 1 + membershipList.size();
-    string msg = "0" + membershipList;
-//    clear((char*)msg, (messageSize) * sizeof(char));
-//    memcpy(msg + 1 + 1, membershipList.c_str(), messageSize - 1);
+    string msg = "2" + membershipList;
 
     if (destination.empty()) {
         vector<MemberListEntry>::iterator position;
         for(position = memberNode->memberList.begin(); position < memberNode->memberList.end(); position++) {
+            if (findFailedMember(&(*position)) >= 0) continue;
             string address = to_string(position->getid());
             address += ":";
             address += to_string(position->getport());
 
-            // size_t messageSize = sizeof(MessageHdr) + sizeof(membershipList.c_str());
-            // MessageHdr* msg = (MessageHdr*) malloc((messageSize + 2) * sizeof(char));
-            // clear((char*)msg, (messageSize + 2) * sizeof(char));
             msg[0] = GOSSIP;
-            // memcpy((char*)(msg+1) + 1, membershipList.c_str(), sizeof(membershipList.c_str()));
-        
+//            cerr << 13 << endl;
             emulNet->ENsend(&(memberNode->addr), new Address(address), msg);
         }
     }
     else {
-            // size_t messageSize = sizeof(MessageHdr) + sizeof(membershipList.c_str());
-            // MessageHdr* msg = (MessageHdr*) malloc((messageSize + 2) * sizeof(char));
             msg[0] = JOINREP;
-            // memcpy((char*)(msg+1) + 1, membershipList.c_str(), sizeof(membershipList.c_str()));
-            
-
             emulNet->ENsend(&(memberNode->addr), new Address(destination), msg);
     }
 }
@@ -401,20 +432,28 @@ void MP1Node::nodeLoopOps() {
     this->memberNode->heartbeat++;
 	
     for (int i = 0; i < failedMembers.size(); i++) {
-        int failedMemberIndex = failedMembers[i];
-        if ((par->getcurrtime() - memberNode->memberList[failedMemberIndex].gettimestamp()) > (TFAIL + TREMOVE)) {
-            memberNode->memberList.erase(memberNode->memberList.begin() + failedMemberIndex);
+//        int failedMemberIndex = failedMembers[i];
+        if ((par->getcurrtime() - failedMembers[i]->gettimestamp()) >= (TFAIL + TREMOVE)) {
+            memberNode->memberList.erase(memberNode->memberList.begin() + findMemberListEntryIndex(failedMembers[i]));
+            log->logNodeRemove(new Address(memberNode->addr.getAddress()), new Address(to_string(failedMembers[i]->getid()) + ":" + to_string(failedMembers[i]->getport())));
             failedMembers.erase(failedMembers.begin() + i);
+//            cerr << 11 << endl;
             i--;
         }
     }
 
     vector<MemberListEntry>::iterator position;
     for(position = memberNode->memberList.begin(); position < memberNode->memberList.end(); position++) {
-        int index = distance(memberNode->memberList.begin(), position);
-        if ( (par->getcurrtime() - position->gettimestamp()) > TFAIL && !isMemberFailed(index) ) {
-            // Mark them as failed
-            failedMembers.push_back(index);
+        if ( (par->getcurrtime() - position->gettimestamp()) >= TFAIL && findFailedMember(&(*position)) < 0 ) {
+//            if (num_failures < 20) {
+//            log->logNodeRemove(new Address(memberNode->addr.getAddress()), new Address(to_string(position->getid()) + ":" + to_string(position->getport())));
+
+//                log->logNodeRemove(new Address(memberNode->addr.getAddress()), new Address(to_string(position->getid()) + ":" + to_string(position->getport())));
+//                num_failures++;
+//            }
+//            memberNode->memberList.erase(memberNode->memberList.begin() + findMemberListEntryIndex(&(*position)));
+            failedMembers.push_back(&(*position));
+//            cerr << findFailedMember(&(*position)) << endl;
         }
     }
 
@@ -452,6 +491,7 @@ Address MP1Node::getJoinAddress() {
  */
 void MP1Node::initMemberListTable(Member *memberNode) {
 	memberNode->memberList.clear();
+	failedMembers.clear();
 }
 
 /**

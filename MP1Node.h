@@ -19,7 +19,7 @@
 /**
  * Time Period Macros
  */
-#define TREMOVE 20
+#define TREMOVE 5
 #define TFAIL 5
 
 /**
@@ -40,7 +40,8 @@ private:
 	Log *log;
 	Params *par;
 	Member *memberNode;
-	vector<int> failedMembers;
+	vector<MemberListEntry*> failedMembers;
+	int num_failures;
 	char NULLADDR[6];
 
 public:
@@ -59,12 +60,13 @@ public:
 	void checkMessages();
 	string getMembershipListString();
 	vector<string> splitString(string str, char delim);
-	bool isMemberFailed(int index);
+	int findFailedMember(MemberListEntry *member);
 	MemberListEntry* getMemberListEntry(int id, int port);
 	void sendMembershipList(string destination);
 	void recvCallBack(void *env, char *data, int size);
 	void nodeLoopOps();
 	int isNullAddress(Address *addr);
+	int findMemberListEntryIndex(MemberListEntry *mem);
 	Address getJoinAddress();
 	void initMemberListTable(Member *memberNode);
 	void printAddress(Address *addr);
