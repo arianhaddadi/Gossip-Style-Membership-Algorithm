@@ -368,7 +368,7 @@ void MP1Node::sendMembershipList(string destination) {
  */
 vector<int> MP1Node::chooseNeighboursToGossip() {
     vector<int> chosenNeighbours;
-    int numToChoose = int(1 * memberNode->memberList.size());
+    int numToChoose = int(par->RATIO_GOSSIP * memberNode->memberList.size());
 
     while (chosenNeighbours.size() < numToChoose) {
         int random = rand() % memberNode->memberList.size();

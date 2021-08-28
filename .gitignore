@@ -1,6 +1,4 @@
-*.pdf
 .idea
-*.py
 *.sh
 .vscode
 build/*

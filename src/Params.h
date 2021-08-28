@@ -25,6 +25,7 @@ public:
 	double MSG_DROP_PROB;		// message drop probability
 	double STEP_RATE;		    // dictates the rate of insertion
 	int EN_GPSZ;			    // actual number of peers
+	float RATIO_GOSSIP;         // ratio of neighbour to choose randomly each time to gossip
 	int MAX_MSG_SIZE;
 	int DROP_MSG;
 	int dropmsg;
