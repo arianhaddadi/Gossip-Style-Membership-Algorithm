@@ -25,7 +25,6 @@ void handler(int sig) {
  * DESCRIPTION: main function. Start from here
  **********************************/
 int main(int argc, char *argv[]) {
-	//signal(SIGSEGV, handler);
 	if ( argc != ARGS_COUNT ) {
 		cout<<"Configuration (i.e., *.conf) file File Required"<<endl;
 		return FAILURE;
@@ -60,8 +59,6 @@ Application::Application(char *infile) {
 		Member *memberNode = new Member;
 		memberNode->inited = false;
 		Address *addressOfMemberNode = new Address();
-		Address joinaddr;
-		joinaddr = getjoinaddr();
 		addressOfMemberNode = (Address *) en->ENinit(addressOfMemberNode, par->PORTNUM);
 		mp1[i] = new MP1Node(memberNode, par, en, log, addressOfMemberNode);
 		log->LOG(&(mp1[i]->getMemberNode()->addr), "APP");
@@ -90,7 +87,6 @@ Application::~Application() {
 int Application::run()
 {
 	int i;
-	int timeWhenAllNodesHaveJoined = 0;
 	// boolean indicating if all nodes have joined
 	bool allNodesJoined = false;
 	srand(time(NULL));
@@ -167,8 +163,6 @@ void Application::mp1Run() {
  * FUNCTION NAME: fail
  *
  * DESCRIPTION: This function controls the failure of nodes
- *
- * Note: this is used only by MP1
  */
 void Application::fail() {
 	int i, removed;
@@ -207,11 +201,9 @@ void Application::fail() {
  * DESCRIPTION: This function returns the address of the coordinator
  */
 Address Application::getjoinaddr(void){
-	//trace.funcEntry("Application::getjoinaddr");
     Address joinaddr;
     joinaddr.init();
     *(int *)(&(joinaddr.addr))=1;
     *(short *)(&(joinaddr.addr[4]))=0;
-    //trace.funcExit("Application::getjoinaddr", SUCCESS);
     return joinaddr;
 }

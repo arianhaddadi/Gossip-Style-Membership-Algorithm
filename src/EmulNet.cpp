@@ -186,7 +186,7 @@ int EmulNet::ENcleanup() {
 	int i, j;
 	int sent_total, recv_total;
 
-	FILE* file = fopen("msgcount.log", "w+");
+	FILE* file = fopen("logs/msgcount.log", "w+");
 
 	while(emulnet.currbuffsize > 0) {
 		free(emulnet.buff[--emulnet.currbuffsize]);

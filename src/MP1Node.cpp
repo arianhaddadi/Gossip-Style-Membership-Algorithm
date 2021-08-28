@@ -340,7 +340,7 @@ string MP1Node::getMembershipListString() {
  */
 void MP1Node::sendMembershipList(string destination) {
     string membershipList = getMembershipListString();
-    string msg = "2" + membershipList;
+    string msg = GOSSIP + membershipList;
 
     if (destination.empty()) {
         vector<int> gossipNeighbours = chooseNeighboursToGossip();

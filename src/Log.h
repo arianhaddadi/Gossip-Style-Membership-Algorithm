@@ -17,8 +17,8 @@
 // number of writes after which to flush file
 #define MAXWRITES 1
 #define MAGIC_NUMBER "CS425"
-#define DBG_LOG "dbg.log"
-#define STATS_LOG "stats.log"
+#define DBG_LOG "logs/dbg.log"
+#define STATS_LOG "logs/stats.log"
 
 /**
  * CLASS NAME: Log
